@@ -247,7 +247,7 @@ class SiameseDatasetTrain(Dataset):
 
 
 
-def create_dataset():
+def create_reid_dataset():
     siamese_dataset = SiameseDatasetTrain(data_dir=data_dir_train, crop_size=256, pos_prob=0.5, max_frame_gap=10)
     siamese_dataloader = DataLoader(siamese_dataset, batch_size=64, shuffle=True, num_workers=min(4, os.cpu_count()), pin_memory=True)
 
@@ -287,7 +287,7 @@ def train_reid_model():
 
     model = SiameseNetwork().to(device)
 
-    dataloader = create_dataset()
+    dataloader = create_reid_dataset()
 
     criterion = ContrastiveLoss()
     optimizer = optim.Adam([

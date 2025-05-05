@@ -16,6 +16,14 @@ from detector import *
 from reid import *
 
 
+def reverse_normalize(img, mean, std):
+    img *= std
+    img += mean
+    img *= 255.0
+    img = np.clip(img, 0, 255).astype(np.uint8)
+    return img
+    
+
 def demo_augmentation():
     t_raw = transforms.Compose([
         transforms.ToTensor(),
@@ -147,15 +155,6 @@ def demo_reid_pairs(type):
     img2 = reverse_normalize(img2_np, mean, std)
     frame2 = cv2.cvtColor(img2, cv2.COLOR_RGB2BGR)
     cv2_imshow(frame2)
-
-
-
-def reverse_normalize(img, mean, std):
-    img *= std
-    img += mean
-    img *= 255
-    img = np.clip(img, 0, 255).astype(np.uint8)
-    return img
 
 
 def track_objects(dataset, detection_model, siamese_net, output_path, fps=30):

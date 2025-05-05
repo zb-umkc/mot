@@ -28,3 +28,21 @@ ckpt_filename_reid = f"{base_dir}/reid_model_20250425.pth"
 save_filename_reid = f"{base_dir}/reid_model_{today}.pth"
 num_epochs_reid = 4
 reid_threshold = 0.7
+
+# Image resolutions
+img_res = {
+    "MOT16-01": (1920, 1080),
+    "MOT16-02": (1920, 1080),
+    "MOT16-03": (1920, 1080),
+    "MOT16-04": (1920, 1080),
+    "MOT16-05": (640, 480),
+    "MOT16-06": (640, 480),
+    "MOT16-07": (1920, 1080),
+    "MOT16-08": (1920, 1080),
+    "MOT16-09": (1920, 1080),
+    "MOT16-10": (1920, 1080),
+    "MOT16-11": (1920, 1080),
+    "MOT16-12": (1920, 1080),
+    "MOT16-13": (1920, 1080),
+    "MOT16-14": (1920, 1080)
+}

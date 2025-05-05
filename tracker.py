@@ -6,6 +6,7 @@ from tqdm.auto import tqdm
 import cv2
 
 from detector import *
+from config import *
 
 
 def run_inference(seq_name, detection_model, reid_model):
@@ -13,7 +14,7 @@ def run_inference(seq_name, detection_model, reid_model):
     detection_model.eval()
     reid_model.eval()
 
-    dataloader, _ = create_datasets(mode="test", seq_name=seq_name)
+    dataloader, _ = create_detection_datasets(mode="test", seq_name=seq_name)
 
     pred_boxes = []
     frame = 0
@@ -79,10 +80,6 @@ def run_inference(seq_name, detection_model, reid_model):
                 tracked_objects[matched_id]["embedding"] = embedding
                 tracked_objects[matched_id]["last_seen"] = frame
                 pred_boxes.append([frame, matched_id, x1, y1, x2, y2])
-
-        #TODO: Remove after testing
-        if frame >= 100:
-            break
 
     preds_df = pd.DataFrame(pred_boxes, columns=["frame_id", "obj_id", "x1", "y1", "x2", "y2"])
 

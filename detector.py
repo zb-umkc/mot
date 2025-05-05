@@ -240,7 +240,7 @@ def motion_blur(image, p=0.2, kernel_size_range=(3, 9)):
     return blurred
 
 
-def create_datasets(mode, seq_name=None):
+def create_detection_datasets(mode, seq_name=None):
     if mode == "train":
         detection_dataset_train = MOTDataset(data_dir=data_dir_train, mode="train")
         detection_dataset_train, detection_dataset_val = random_split(detection_dataset_train, val_size=0.2)
@@ -350,7 +350,7 @@ def train_detection_model():
     model = load_backbone()
     model.to(device)
 
-    train_dataloader, val_dataloader = create_datasets(mode="train")
+    train_dataloader, val_dataloader = create_detection_datasets(mode="train")
 
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.SGD(
