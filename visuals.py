@@ -239,14 +239,14 @@ def track_objects(dataset, detection_model, siamese_net, output_path, fps=30):
     cv2.destroyAllWindows()
 
 
-output_path = 'output__tracking_video.mp4'
-data_dir_train = f"{base_dir}/MOT16/train"
-transform = transforms.Compose([transforms.ToTensor()])
-train_dataset = MOTDataset(data_dir=data_dir_train, transform=transform)
-track_objects(dataset=train_dataset,
-              detection_model=model,
-              siamese_net=siamese_net,
-              output_path=output_path)
+# output_path = 'output__tracking_video.mp4'
+# data_dir_train = f"{base_dir}/MOT16/train"
+# transform = transforms.Compose([transforms.ToTensor()])
+# train_dataset = MOTDataset(data_dir=data_dir_train, transform=transform)
+# track_objects(dataset=train_dataset,
+#               detection_model=model,
+#               siamese_net=siamese_net,
+#               output_path=output_path)
 
 ################################################
 
@@ -359,8 +359,8 @@ def display_frame(data_dir, seq, frame_id, boxes=None, label_loc="middle"):
     cv2.destroyAllWindows()
 
 
-for i in range(1, 11):
-    display_frame(data_dir=data_dir_test, seq="MOT16-01", frame_id=i, boxes=preds, label_loc="bottom")
+# for i in range(1, 11):
+#     display_frame(data_dir=data_dir_test, seq="MOT16-01", frame_id=i, boxes=preds, label_loc="bottom")
 
 ################################################
 
@@ -459,5 +459,5 @@ def test_one_image(faster_rcnn_model, siamese_net):
             return preds
 
 
-preds = test_one_image(faster_rcnn_model=model, siamese_net=siamese_net)
+# preds = test_one_image(faster_rcnn_model=model, siamese_net=siamese_net)
 
