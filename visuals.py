@@ -16,14 +16,6 @@ from detector import *
 from reid import *
 
 
-def reverse_normalize(img, mean, std):
-    img *= std
-    img += mean
-    img *= 255.0
-    img = np.clip(img, 0, 255).astype(np.uint8)
-    return img
-    
-
 def demo_augmentation():
     t_raw = transforms.Compose([
         transforms.ToTensor(),
@@ -155,6 +147,15 @@ def demo_reid_pairs(type):
     img2 = reverse_normalize(img2_np, mean, std)
     frame2 = cv2.cvtColor(img2, cv2.COLOR_RGB2BGR)
     cv2_imshow(frame2)
+
+
+
+def reverse_normalize(img, mean, std):
+    img *= std
+    img += mean
+    img *= 255
+    img = np.clip(img, 0, 255).astype(np.uint8)
+    return img
 
 
 def track_objects(dataset, detection_model, siamese_net, output_path, fps=30):
@@ -460,3 +461,54 @@ def test_one_image(faster_rcnn_model, siamese_net):
 
 # preds = test_one_image(faster_rcnn_model=model, siamese_net=siamese_net)
 
+################################################
+
+def generate_video(data_loader, boxes, output_file, dim, label_loc="middle"):
+    # device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
+    # Initialize VideoWriter
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_file, fourcc, 30, dim)
+    frame = 0
+
+    # Stats for reversing normalization
+    mean = np.array([0.485, 0.456, 0.406])
+    std = np.array([0.229, 0.224, 0.225])
+
+    for batch_list in tqdm(data_loader):
+        for image, _ in batch_list:
+            frame += 1
+            # image = image.to(device)
+            image_np = image.squeeze().permute(1, 2, 0).cpu().numpy()
+            image_np = reverse_normalize(image_np, mean=mean, std=std)
+            height, width, _ = image_np.shape
+            img = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+
+            boxes_f = boxes[boxes["frame_id"] == frame]
+
+            # Draw bounding boxes
+            for index, box in boxes_f.iterrows():  # List of predicted boxes
+                if label_loc == "middle":
+                  label_x = int((box["x1"] + box["x2"])/2)
+                  label_y = int((box["y1"] + box["y2"])/2)
+                elif label_loc == "top":
+                  label_x = box["x1"]
+                  label_y = box["y1"] - 10
+                elif label_loc == "bottom":
+                  label_x = box["x1"]
+                  label_y = box["y2"] + 10
+
+                cv2.rectangle(
+                    img=img,
+                    pt1=(box["x1"], box["y1"]),
+                    pt2=(box["x2"], box["y2"]),
+                    color=(0, 255, 0),
+                    thickness=2
+                )
+                cv2.putText(img, f"ID: {box['obj_id']}", (label_x, label_y),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                
+            out.write(img)
+
+    out.release()
+    cv2.destroyAllWindows()
