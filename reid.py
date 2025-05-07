@@ -317,3 +317,127 @@ def train_reid_model():
     }, save_filename_reid)
 
     print(f"Model Saved to: {save_filename_reid}")
+
+##########################
+
+def random_split(dataset, val_size=0.2):
+    indices = list(range(len(dataset)))
+    random.shuffle(indices)
+
+    val_num = int(len(dataset) * val_size)
+    train_indices = sorted(indices[:-val_num])
+    val_indices = sorted(indices[-val_num:])
+
+    train_dataset = torch.utils.data.Subset(dataset, train_indices)
+    val_dataset = torch.utils.data.Subset(dataset, val_indices)
+
+    return train_dataset, val_dataset
+
+
+def create_reid_dataset():
+    siamese_dataset = SiameseDatasetTrain(data_dir=data_dir_train, crop_size=256, pos_prob=0.5, max_frame_gap=10)
+    
+    train_dataset, val_dataset = random_split(siamese_dataset, val_size=0.2)
+    
+    train_siamese_dataloader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=min(4, os.cpu_count()), pin_memory=True
+    )
+    val_siamese_dataloader = DataLoader(val_dataset, batch_size=64, shuffle=False, num_workers=min(4, os.cpu_count()), pin_memory=True
+    )
+
+    return train_siamese_dataloader, val_siamese_dataloader
+
+
+def train_one_epoch(model, optimizer, dataloader, device, criterion, epoch):
+    model.train()
+    running_loss = 0.0
+    for img1, img2, label in tqdm(dataloader):
+        img1, img2, label = img1.to(device, non_blocking=True), img2.to(device, non_blocking=True), label.to(device, non_blocking=True)
+
+        optimizer.zero_grad()
+
+        # Forward pass
+        output1, output2 = model(img1, img2)
+
+        # Compute loss
+        loss = criterion(output1, output2, label)
+
+        # Backward pass and optimize
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        optimizer.step()
+
+        running_loss += loss.item()
+
+    training_loss = running_loss / len(dataloader)
+
+    return training_loss
+
+def evaluate(model, val_loader, criterion, device):
+    model.eval()  # Set model to evaluation mode
+    total_loss = 0.0
+    total_samples = 0
+    pred_correct = 0
+    
+    with torch.no_grad():
+        for img1, img2, label in tqdm(val_loader):
+            img1 = img1.to(device, non_blocking=True)
+            img2 = img2.to(device, non_blocking=True)
+            label = label.to(device, non_blocking=True)
+            
+            # Forward pass
+            output1, output2 = model(img1, img2)
+            
+            # Compute loss
+            loss = criterion(output1, output2, label)
+            
+            # Accumulate loss
+            total_loss += loss.item() * img1.size(0)  # Multiply by batch size
+            total_samples += img1.size(0)
+
+            # Calculate accuracy
+            pred = loss < reid_threshold
+            pred_correct += (pred == label).sum()
+    
+    avg_loss = total_loss / total_samples
+    accuracy = pred_correct / total_samples
+    print(f"Val Loss: {avg_loss}, Accuracy: {accuracy}")
+    return avg_loss, accuracy
+
+def train_reid_model():
+    # Initialize the Siamese Network and loss function
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
+    model = SiameseNetwork().to(device)
+
+    train_dataloader, val_dataloader = create_reid_dataset()
+
+    criterion = ContrastiveLoss()
+    optimizer = optim.Adam([
+        {'params': model.backbone.parameters(), 'lr': 1e-4},
+        {'params': model.fc.parameters(), 'lr': 5e-4}
+    ])
+
+    # Training loop
+    for epoch in range(num_epochs_reid):
+        training_loss = train_one_epoch(
+            model=model,
+            optimizer=optimizer,
+            dataloader=dataloader,
+            device=device,
+            criterion=criterion,
+            epoch=epoch
+        )
+        val_loss = evaluate(model, val_dataloader, criterion, device)
+        print(f"Epoch [{epoch+1}/{num_epochs_reid}], Training Loss: {training_loss}, Val Loss: {val_loss}")
+
+    print("\nTraining Completed")
+
+    torch.save({
+    'epoch': epoch+1,
+    'model_state_dict': model.state_dict(),
+    'optimizer_state_dict': optimizer.state_dict(),
+    'train_loss': training_loss,
+    'val_loss': val_loss
+    }, save_filename_reid)
+
+    print(f"Model Saved to: {save_filename_reid}")
