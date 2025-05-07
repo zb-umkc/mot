@@ -376,7 +376,10 @@ def evaluate(model, val_loader, criterion, device):
     model.eval()  # Set model to evaluation mode
     total_loss = 0.0
     total_samples = 0
-    pred_correct = 0
+    tp = 0
+    fp = 0
+    tn = 0
+    fn = 0
     
     with torch.no_grad():
         for img1, img2, label in tqdm(val_loader):
@@ -394,14 +397,21 @@ def evaluate(model, val_loader, criterion, device):
             total_loss += loss.item() * img1.size(0)  # Multiply by batch size
             total_samples += img1.size(0)
 
-            # Calculate accuracy
-            pred = loss < reid_threshold
-            pred_correct += (pred == label).sum()
-    
+            # Calculate other metrics
+            distance = torch.norm(output1 - output2, p=2).item()
+            pred = distance < reid_threshold
+            tp += torch.sum((pred == 1) & (label == 1)).item()
+            fp += torch.sum((pred == 1) & (label == 0)).item()
+            tn += torch.sum((pred == 0) & (label == 0)).item()
+            fn += torch.sum((pred == 0) & (label == 1)).item()
+              
     avg_loss = total_loss / total_samples
-    accuracy = pred_correct / total_samples
-    print(f"Val Loss: {avg_loss}, Accuracy: {accuracy}")
-    return avg_loss, accuracy
+    accuracy = (tp + tn) / (tp + tn + fp + fn)
+    precision = (tp) / (tp + fp)
+    recall = (tp) / (tp + fn)
+  
+    print(f"Val Loss: {avg_loss}, Acc: {accuracy}, Prec: {precision}, Rec: {recall}")
+    return avg_loss, accuracy, precision, recall
 
 def train_reid_model():
     # Initialize the Siamese Network and loss function
