@@ -7,7 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as transforms
 from torchvision.models.detection import (
     fasterrcnn_resnet50_fpn,
-    FasterRCNN_ResNet50_FPN_Weights
+    FasterRCNN_ResNet50_FPN_Weights,
 )
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from tqdm.auto import tqdm
@@ -22,8 +22,8 @@ def load_backbone():
     Load the pre-trained ResNet50 backbone for object detection.
     """
     model = fasterrcnn_resnet50_fpn(
-        weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT,
-        trainable_backbone_layers=1)
+        weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT, trainable_backbone_layers=1
+    )
     num_classes = 2
     in_features = model.roi_heads.box_predictor.cls_score.in_features
     model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
@@ -41,7 +41,7 @@ def load_trained_detection_model(filename):
     model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
 
     model.load_state_dict(torch.load(filename, weights_only=False)["model_state_dict"])
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model.to(device)
 
     return model
@@ -51,6 +51,7 @@ class MOTDataset(Dataset):
     """
     Custom dataset for loading images and ground truth bounding boxes from the MOT16 dataset.
     """
+
     def __init__(self, data_dir, transform=None, mode="train", seq_name=None):
         self.data_dir = data_dir
         self.transform = transform
@@ -61,29 +62,50 @@ class MOTDataset(Dataset):
         if mode == "train":
             # Color, blur, grayscale, tensor, blur, shape, normalize
             if self.transform is None:
-              self.transform = transforms.Compose([
-                  transforms.ToPILImage(),
-                  transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1),
-                  transforms.RandomApply([transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 2))], p=0.5),
-                  transforms.RandomGrayscale(p=0.05),
-                  transforms.ToTensor(),
-                  transforms.Lambda(lambda img: motion_blur(img, p=0.2)),
-                  transforms.Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0]==1 else x),
-                  transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                      std=[0.229, 0.224, 0.225]),
-              ])
+                self.transform = transforms.Compose(
+                    [
+                        transforms.ToPILImage(),
+                        transforms.ColorJitter(
+                            brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1
+                        ),
+                        transforms.RandomApply(
+                            [
+                                transforms.GaussianBlur(
+                                    kernel_size=(5, 9), sigma=(0.1, 2)
+                                )
+                            ],
+                            p=0.5,
+                        ),
+                        transforms.RandomGrayscale(p=0.05),
+                        transforms.ToTensor(),
+                        transforms.Lambda(lambda img: motion_blur(img, p=0.2)),
+                        transforms.Lambda(
+                            lambda x: x.repeat(3, 1, 1) if x.shape[0] == 1 else x
+                        ),
+                        transforms.Normalize(
+                            mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                        ),
+                    ]
+                )
             self.ground_truth = self._load_ground_truth()
         else:
-            assert self.seq_name is not None, "Sequence name must be provided for inference mode"
+            assert (
+                self.seq_name is not None
+            ), "Sequence name must be provided for inference mode"
 
             # Tensor, shape, normalize
             if self.transform is None:
-              self.transform = transforms.Compose([
-                  transforms.ToTensor(),
-                  transforms.Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0]==1 else x),
-                  transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                      std=[0.229, 0.224, 0.225]),
-              ])
+                self.transform = transforms.Compose(
+                    [
+                        transforms.ToTensor(),
+                        transforms.Lambda(
+                            lambda x: x.repeat(3, 1, 1) if x.shape[0] == 1 else x
+                        ),
+                        transforms.Normalize(
+                            mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                        ),
+                    ]
+                )
             self.ground_truth = {}
 
         self.imgs = self._load_images()
@@ -102,7 +124,9 @@ class MOTDataset(Dataset):
         for seq_name in dirs:
             img_dir = os.path.join(self.data_dir, seq_name, "img1")
             if os.path.isdir(img_dir):
-                img_list = [f"{seq_name}/img1/{img_name}" for img_name in os.listdir(img_dir)]
+                img_list = [
+                    f"{seq_name}/img1/{img_name}" for img_name in os.listdir(img_dir)
+                ]
                 imgs.extend(img_list)
 
         return sorted(imgs)
@@ -134,15 +158,17 @@ class MOTDataset(Dataset):
                 gt[seq_name] = {}
             gt_path = os.path.join(self.data_dir, seq_name, "gt/gt.txt")
 
-            with open(gt_path, 'r') as f:
+            with open(gt_path, "r") as f:
                 for line in f:
-                    frame_id, obj_id, x1, y1, w, h, _, _, _ = line.strip().split(',')
+                    frame_id, obj_id, x1, y1, w, h, _, _, _ = line.strip().split(",")
                     x2 = int(x1) + int(w)
                     y2 = int(y1) + int(h)
                     frame_id = int(frame_id)
                     if frame_id not in gt[seq_name]:
                         gt[seq_name][frame_id] = []
-                    gt[seq_name][frame_id].append([int(obj_id), float(x1), float(y1), float(x2), float(y2)])
+                    gt[seq_name][frame_id].append(
+                        [int(obj_id), float(x1), float(y1), float(x2), float(y2)]
+                    )
         return gt
 
     def __len__(self):
@@ -161,7 +187,7 @@ class MOTDataset(Dataset):
 
         # image = image.permute(1, 2, 0)
         seq_name = img_path.split("/")[-3]
-        frame_id = int(img_path.split("/")[-1].split('.')[0])
+        frame_id = int(img_path.split("/")[-1].split(".")[0])
 
         if self.mode == "train":
             ground_truth_data = self.ground_truth.get(seq_name, []).get(frame_id, [])
@@ -172,11 +198,11 @@ class MOTDataset(Dataset):
 
         # Handling the shape of the image (Just incase to prevent any errors)
         if len(image.shape) == 2:  # Grayscale
-          image = image.unsqueeze(0).repeat(3, 1, 1)
+            image = image.unsqueeze(0).repeat(3, 1, 1)
         elif image.shape[0] > 3:
-          image = image[:3, :, :]
+            image = image[:3, :, :]
 
-        #image_tensor = image.permute(2,0,1).float() / 255.0
+        # image_tensor = image.permute(2,0,1).float() / 255.0
 
         return image, ground_truth_data
 
@@ -184,7 +210,7 @@ class MOTDataset(Dataset):
 def custom_collate_fn(batch):
     """
     Custom collate function to handle variable-sized images and ground truth data.
-    
+
     Batches are returned in the format [(images1, gt1), (images2, gt2), ...],
     where each tuple contains multiple images of the same resolution.
     """
@@ -193,26 +219,26 @@ def custom_collate_fn(batch):
     # Object ID is item[0], but 1 in labels represents the class "person"
     # So all labels here are set to 1 (object)
     gt_dicts = [
-        {"boxes": torch.Tensor([item[1:] for item in img]).type(torch.float32),
-         "labels": torch.Tensor([1 for item in img]).type(torch.int64)}
-        for img in gt]
+        {
+            "boxes": torch.Tensor([item[1:] for item in img]).type(torch.float32),
+            "labels": torch.Tensor([1 for item in img]).type(torch.int64),
+        }
+        for img in gt
+    ]
 
     grouped_batch = {}
     for i in range(len(batch)):
-      size = images[i].shape
-      if size not in grouped_batch:
-        grouped_batch[size] = {
-            "images": [],
-            "gt": []
-        }
-      grouped_batch[size]["images"].append(images[i])
-      grouped_batch[size]["gt"].append(gt_dicts[i])
+        size = images[i].shape
+        if size not in grouped_batch:
+            grouped_batch[size] = {"images": [], "gt": []}
+        grouped_batch[size]["images"].append(images[i])
+        grouped_batch[size]["gt"].append(gt_dicts[i])
 
     final_batch = []
     for size, data in grouped_batch.items():
-      images = torch.stack(data["images"])
-      gt_dicts = data["gt"]
-      final_batch.append((images, gt_dicts))
+        images = torch.stack(data["images"])
+        gt_dicts = data["gt"]
+        final_batch.append((images, gt_dicts))
 
     return final_batch
 
@@ -266,9 +292,7 @@ def motion_blur(image, p=0.2, kernel_size_range=(3, 9)):
         channel = image[c].unsqueeze(0).unsqueeze(0)
         channel_kernel = kernel.unsqueeze(0).unsqueeze(0)
         blurred[c] = torch.nn.functional.conv2d(
-            channel,
-            channel_kernel.float(),
-            padding=kernel_size//2
+            channel, channel_kernel.float(), padding=kernel_size // 2
         ).squeeze()
 
     return blurred
@@ -280,7 +304,9 @@ def create_detection_datasets(mode, seq_name=None):
     """
     if mode == "train":
         detection_dataset_train = MOTDataset(data_dir=data_dir_train, mode="train")
-        detection_dataset_train, detection_dataset_val = random_split(detection_dataset_train, val_size=0.2)
+        detection_dataset_train, detection_dataset_val = random_split(
+            detection_dataset_train, val_size=0.2
+        )
 
         dataloader1 = DataLoader(
             detection_dataset_train,
@@ -288,7 +314,7 @@ def create_detection_datasets(mode, seq_name=None):
             shuffle=True,
             collate_fn=custom_collate_fn,
             num_workers=min(4, os.cpu_count()),
-            pin_memory=True
+            pin_memory=True,
         )
         dataloader2 = DataLoader(
             detection_dataset_val,
@@ -296,22 +322,24 @@ def create_detection_datasets(mode, seq_name=None):
             shuffle=True,
             collate_fn=custom_collate_fn,
             num_workers=min(4, os.cpu_count()),
-            pin_memory=True
+            pin_memory=True,
         )
     elif mode == "test":
-        detection_dataset_test = MOTDataset(data_dir=data_dir_test, mode="test", seq_name=seq_name)
+        detection_dataset_test = MOTDataset(
+            data_dir=data_dir_test, mode="test", seq_name=seq_name
+        )
         dataloader1 = DataLoader(
             detection_dataset_test,
             batch_size=1,
             shuffle=False,
             collate_fn=custom_collate_fn,
             num_workers=min(4, os.cpu_count()),
-            pin_memory=True
+            pin_memory=True,
         )
         dataloader2 = None
     else:
         raise ValueError("Invalid mode. Use 'train' or 'test'.")
-    
+
     return dataloader1, dataloader2
 
 
@@ -333,7 +361,17 @@ def train_one_epoch(model, optimizer, data_loader, device, warmup):
     for batch_list in tqdm(data_loader):
         for images, targets in batch_list:
             images = list(image.to(device, non_blocking=True) for image in images)
-            targets = [{k: v.to(device, non_blocking=True) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
+            targets = [
+                {
+                    k: (
+                        v.to(device, non_blocking=True)
+                        if isinstance(v, torch.Tensor)
+                        else v
+                    )
+                    for k, v in t.items()
+                }
+                for t in targets
+            ]
             losses = model(images, targets)
             tot_loss = sum(loss for loss in losses.values())
 
@@ -361,10 +399,20 @@ def evaluate(model, val_dataloader, device):
     for batch_list in tqdm(val_dataloader):
         for images, targets in batch_list:
             images = list(image.to(device, non_blocking=True) for image in images)
-            targets = [{k: v.to(device, non_blocking=True) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
+            targets = [
+                {
+                    k: (
+                        v.to(device, non_blocking=True)
+                        if isinstance(v, torch.Tensor)
+                        else v
+                    )
+                    for k, v in t.items()
+                }
+                for t in targets
+            ]
 
             with torch.no_grad():
-              losses = model(images, targets)
+                losses = model(images, targets)
 
             tot_loss = sum(loss for loss in losses.values())
 
@@ -391,7 +439,7 @@ def train_detection_model():
     """
     Train and evaluate the object detection model over several epochs using the MOT16 dataset.
     """
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     model = load_backbone()
     model.to(device)
@@ -399,23 +447,16 @@ def train_detection_model():
     train_dataloader, val_dataloader = create_detection_datasets(mode="train")
 
     params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch.optim.SGD(
-        params,
-        lr=0.005,
-        momentum=0.9,
-        weight_decay=0.0005
-    )
-    lr_scheduler = torch.optim.lr_scheduler.StepLR(
-        optimizer,
-        step_size=3,
-        gamma=0.1
-    )
+    optimizer = torch.optim.SGD(params, lr=0.005, momentum=0.9, weight_decay=0.0005)
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
 
     for epoch in range(num_epochs_det):
         # train for one epoch, printing every 10 iterations
         warmup = False
         # warmup = True if epoch == 0 else False
-        train_losses, lr = train_one_epoch(model, optimizer, train_dataloader, device, warmup)
+        train_losses, lr = train_one_epoch(
+            model, optimizer, train_dataloader, device, warmup
+        )
         val_loss = evaluate(model, val_dataloader, device)
 
         # update the learning rate
@@ -425,12 +466,15 @@ def train_detection_model():
 
     print("\nTraining Completed")
 
-    torch.save({
-    'epoch': epoch+1,
-    'model_state_dict': model.state_dict(),
-    'optimizer_state_dict': optimizer.state_dict(),
-    'train_loss': train_losses,
-    'val_loss': val_loss
-    }, save_filename_det)
+    torch.save(
+        {
+            "epoch": epoch + 1,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "train_loss": train_losses,
+            "val_loss": val_loss,
+        },
+        save_filename_det,
+    )
 
     print(f"Model Saved to: {save_filename_det}")

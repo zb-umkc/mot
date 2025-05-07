@@ -14,7 +14,7 @@ def run_inference(seq_name, detection_model, reid_model):
     """
     Run inference on the detection model and re-identification model.
     """
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     detection_model.eval()
     reid_model.eval()
 
@@ -44,13 +44,13 @@ def run_inference(seq_name, detection_model, reid_model):
                 x1, y1 = int(x1), int(y1)
                 x2, y2 = int(x2), int(y2)
 
-                crop = image[:, :, y1:(y2+1), x1:(x2+1)].squeeze().cpu().numpy()
-                if crop.size == 0: # Skip empty crops
+                crop = image[:, :, y1 : (y2 + 1), x1 : (x2 + 1)].squeeze().cpu().numpy()
+                if crop.size == 0:  # Skip empty crops
                     print("Skipping empty crop")
                     continue
 
                 # Resize and preprocess the crop for the Siamese Network
-                crop = cv2.resize(crop.transpose(1,2,0), (224, 224))
+                crop = cv2.resize(crop.transpose(1, 2, 0), (224, 224))
                 crop = transforms.ToTensor()(crop).unsqueeze(0).to(device)
 
                 # Compute the feature vector using the Siamese Network
@@ -58,7 +58,9 @@ def run_inference(seq_name, detection_model, reid_model):
                     embedding = reid_model.forward_one(crop)
 
                 matched_id = None
-                min_distance = reid_threshold  # Initialize as a threshold b/t same and different
+                min_distance = (
+                    reid_threshold  # Initialize as a threshold b/t same and different
+                )
 
                 # Compare with existing objects
                 for obj_id, obj in tracked_objects.items():
@@ -82,6 +84,8 @@ def run_inference(seq_name, detection_model, reid_model):
                 tracked_objects[matched_id]["last_seen"] = frame
                 pred_boxes.append([frame, matched_id, x1, y1, x2, y2])
 
-    preds_df = pd.DataFrame(pred_boxes, columns=["frame_id", "obj_id", "x1", "y1", "x2", "y2"])
+    preds_df = pd.DataFrame(
+        pred_boxes, columns=["frame_id", "obj_id", "x1", "y1", "x2", "y2"]
+    )
 
     return preds_df

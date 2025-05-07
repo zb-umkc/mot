@@ -13,7 +13,7 @@ if torch.cuda.is_available():
     torch.cuda.manual_seed_all(myseed)
 
 # General filepaths
-base_dir = '/content/drive/MyDrive/data/CS-5567'
+base_dir = "/content/drive/MyDrive/data/CS-5567"
 data_dir_train = f"{base_dir}/MOT16/train"
 data_dir_test = f"{base_dir}/MOT16/test"
 today = date.today().strftime("%Y%m%d")
@@ -45,5 +45,5 @@ img_res = {
     "MOT16-11": (1920, 1080),
     "MOT16-12": (1920, 1080),
     "MOT16-13": (1920, 1080),
-    "MOT16-14": (1920, 1080)
+    "MOT16-14": (1920, 1080),
 }
