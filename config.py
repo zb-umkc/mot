@@ -18,13 +18,13 @@ data_dir_test = f"{base_dir}/MOT16/test"
 today = date.today().strftime("%Y%m%d")
 
 # Detection model configurations
-ckpt_filename_det = f"{base_dir}/detection_model_20250501.pth"
+ckpt_filename_det = f"{base_dir}/detection_model_20250507.pth"
 save_filename_det = f"{base_dir}/detection_model_{today}.pth"
 num_epochs_det = 10
 det_threshold = 0.7
 
 # Re-ID model configurations
-ckpt_filename_reid = f"{base_dir}/reid_model_20250425.pth"
+ckpt_filename_reid = f"{base_dir}/reid_model_20250507.pth"
 save_filename_reid = f"{base_dir}/reid_model_{today}.pth"
 num_epochs_reid = 10
 reid_threshold = 0.7

@@ -96,7 +96,13 @@ class MOTDataset(Dataset):
 
     def _load_images(self):
         imgs = []
-        for seq_name in os.listdir(self.data_dir):
+
+        if self.mode == "train":
+            dirs = os.listdir(self.data_dir)
+        else:
+            dirs = [self.seq_name]
+
+        for seq_name in dirs:
             img_dir = os.path.join(self.data_dir, seq_name, "img1")
             if os.path.isdir(img_dir):
                 img_list = [f"{seq_name}/img1/{img_name}" for img_name in os.listdir(img_dir)]
@@ -364,9 +370,8 @@ def train_detection_model():
         step_size=3,
         gamma=0.1
     )
-    num_epochs = 4
 
-    for epoch in range(num_epochs):
+    for epoch in range(num_epochs_det):
         # train for one epoch, printing every 10 iterations
         warmup = False
         # warmup = True if epoch == 0 else False

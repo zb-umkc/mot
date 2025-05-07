@@ -411,7 +411,6 @@ def evaluate(model, val_loader, criterion, device):
     precision = (tp) / (tp + fp)
     recall = (tp) / (tp + fn)
   
-    print(f"Val Loss: {avg_loss}, Acc: {accuracy}, Prec: {precision}, Rec: {recall}")
     return avg_loss, accuracy, precision, recall
 
 def train_reid_model():
@@ -442,7 +441,7 @@ def train_reid_model():
         print(f"Epoch [{epoch+1}/{num_epochs_reid}]")
         print(f"-- Training Loss: {training_loss}")
         print(f"-- Val Loss: {l}")
-        print(f"-- Val Accuacy: {a}")
+        print(f"-- Val Accuracy: {a}")
         print(f"-- Val Precision: {p}")
         print(f"-- Val Recall: {r}")
 
