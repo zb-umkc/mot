@@ -1,15 +1,19 @@
+# External imports
 import pandas as pd
 import torch
 import torchvision.transforms as transforms
-from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 import cv2
 
+# Local imports
 from detector import *
 from config import *
 
 
 def run_inference(seq_name, detection_model, reid_model):
+    """
+    Run inference on the detection model and re-identification model.
+    """
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     detection_model.eval()
     reid_model.eval()
@@ -41,7 +45,7 @@ def run_inference(seq_name, detection_model, reid_model):
                 x2, y2 = int(x2), int(y2)
 
                 crop = image[:, :, y1:(y2+1), x1:(x2+1)].squeeze().cpu().numpy()
-                if crop.size == 0:  # Skip empty crops
+                if crop.size == 0: # Skip empty crops
                     print("Skipping empty crop")
                     continue
 
@@ -53,12 +57,10 @@ def run_inference(seq_name, detection_model, reid_model):
                 with torch.no_grad():
                     embedding = reid_model.forward_one(crop)
 
-                # Compare with previous embeddings (tracking logic)
                 matched_id = None
                 min_distance = reid_threshold  # Initialize as a threshold b/t same and different
 
                 # Compare with existing objects
-                # NOTE: Possible for two boxes to match to the same obj_id
                 for obj_id, obj in tracked_objects.items():
                     if obj["last_seen"] == frame:
                         continue
@@ -66,7 +68,6 @@ def run_inference(seq_name, detection_model, reid_model):
                     prev_emb = obj["embedding"]
                     distance = torch.norm(embedding - prev_emb, p=2).item()
 
-                    # print(f"Distance to ID {obj_id}: {distance:.4f}")
                     if distance < min_distance:
                         min_distance = distance
                         matched_id = obj_id

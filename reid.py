@@ -1,8 +1,7 @@
-import sys
+# External imports
 import pandas as pd
 import os
 import random
-from datetime import date
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -13,20 +12,30 @@ from torchvision import models
 from tqdm.auto import tqdm
 import cv2
 
+# Local imports
 from config import *
 
 
 def load_trained_reid_model(filename):
-  model = SiameseNetwork()
+    """
+    Load a trained Siamese Network model for object re-identification.
+    """
+    model = SiameseNetwork()
 
-  model.load_state_dict(torch.load(filename, weights_only=False)["model_state_dict"])
-  device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-  model.to(device)
+    model.load_state_dict(torch.load(filename, weights_only=False)["model_state_dict"])
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    model.to(device)
 
-  return model
+    return model
 
 
 class SiameseNetwork(nn.Module):
+  """
+  A Siamese Network for object re-identification.
+
+  This network uses a ResNet-18 backbone for feature extraction and
+  a fully connected layer for embedding generation (length 256).
+  """
   def __init__(self):
       super(SiameseNetwork, self).__init__()
       self.backbone = models.resnet18(pretrained=True)
@@ -40,17 +49,29 @@ class SiameseNetwork(nn.Module):
       )
 
   def forward_one(self, x):
-      x = self.backbone(x)
-      x = x.view(x.size(0), -1)  # Flatten
-      return self.fc(x)
+        """
+        Forward pass through the backbone and linear layers for a single input.
+        """
+        x = self.backbone(x)
+        x = x.view(x.size(0), -1)
+        return self.fc(x)
 
   def forward(self, input1, input2):
-      output1 = self.forward_one(input1)
-      output2 = self.forward_one(input2)
-      return output1, output2
+        """
+        Forward pass through forward_one() for two inputs.
+        """
+        output1 = self.forward_one(input1)
+        output2 = self.forward_one(input2)
+        return output1, output2
 
 
 class ContrastiveLoss(nn.Module):
+    """
+    Contrastive loss function for Siamese Network.
+    
+    This loss function encourages the network to minimize the distance
+    between similar pairs and maximize the distance between dissimilar pairs.
+    """
     def __init__(self, margin=1.0, reg_weight=0.01):
         super(ContrastiveLoss, self).__init__()
         self.margin = margin
@@ -64,12 +85,19 @@ class ContrastiveLoss(nn.Module):
         loss = label * distance.pow(2) + \
                (1 - label) * F.relu(self.margin - distance).pow(2)
 
+        # Regularization term
+        # Encourages the network to learn a more compact representation
         reg_loss = output1.norm(dim=1).mean() + output2.norm(dim=1).mean()
 
         return loss.mean() + self.reg_weight * reg_loss
 
 
 class SiameseDatasetTrain(Dataset):
+    """
+    A dataset class for training the Siamese Network.
+    
+    This class loads pairs of cropped images from the MOT16 dataset.
+    """
     def __init__(self, data_dir, crop_size=256, pos_prob=0.5, max_frame_gap=10):
       self.data_dir = data_dir
       self.crop_size = crop_size
@@ -104,8 +132,13 @@ class SiameseDatasetTrain(Dataset):
           )
       ])
 
-    # Load all gt files and concatenate into single object (Pandas DF)
     def _load_ground_truth(self):
+        """
+        Load MOT16 ground truth data and concatenate into a single DataFrame.
+        
+        Each row contains the sequence name, frame ID, object ID, bounding box coordinates,
+        and width/height of the bounding box.
+        """
         seqs = os.listdir(self.data_dir)
         cols = ["frame_id", "obj_id", "x1", "y1", "w", "h", "del1", "del2", "del3"]
         gt_list = []
@@ -129,7 +162,9 @@ class SiameseDatasetTrain(Dataset):
         return gt
 
     def _load_image(self, seq, frame_id, x1, y1, x2, y2):
-
+        """
+        Load an image from the specified sequence and frame ID and crop it to the bounding box.
+        """
         filename = ("000000" + str(frame_id))[-6:]
         img_path = f"{self.data_dir}/{seq}/img1/{filename}.jpg"
         image = cv2.imread(img_path)
@@ -139,7 +174,9 @@ class SiameseDatasetTrain(Dataset):
         return image
 
     def _get_random_positive(self, seq, frame_id, obj_id):
-        # Pos Example = Same seq_name, different frame_id, same obj_id
+        """
+        Get a random positive example (same object, different frame).
+        """
         elig_boxes = self.ground_truth[
             (self.ground_truth["seq"] == seq) &
             (self.ground_truth["obj_id"] == obj_id) &
@@ -158,7 +195,9 @@ class SiameseDatasetTrain(Dataset):
         return pos_img
 
     def _get_random_negative(self, seq, frame_id, obj_id):
-        # Neg Example = Same seq_name, different frame_id, different obj_id
+        """
+        Get a random negative example (different object, different frame).
+        """
         elig_boxes = self.ground_truth[
             (self.ground_truth["seq"] == seq) &
             (self.ground_truth["obj_id"] != obj_id) &
@@ -177,151 +216,49 @@ class SiameseDatasetTrain(Dataset):
         return neg_img
 
     def __len__(self):
-      return len(self.ground_truth)
+        """
+        Return the number of samples in the dataset.
+        """
+        return len(self.ground_truth)
 
     def __getitem__(self, idx):
-      box1 = self.ground_truth.iloc[idx]
-      img1 = self._load_image(box1["seq"], box1["frame_id"],
-                              box1["x1"], box1["y1"], box1["x2"], box1["y2"])
+        """
+        Get a labeled sample from the dataset.
 
-      if random.random() < self.pos_prob:
-          # Get positive example
-          img2 = self._get_random_positive(box1["seq"], box1["frame_id"], box1["obj_id"])
-          label = 1
-      else:
-          # Get negative example
-          img2 = self._get_random_negative(box1["seq"], box1["frame_id"], box1["obj_id"])
-          label = 0
+        This includes loading the cropped image, loading a positive or
+        negative example, and transforming both.
+        """
+        box1 = self.ground_truth.iloc[idx]
+        img1 = self._load_image(box1["seq"], box1["frame_id"],
+                                box1["x1"], box1["y1"], box1["x2"], box1["y2"])
 
-      # Apply transforms and return
-      img1 = self.transform(img1)
-      img2 = self.transform(img2)
+        if random.random() < self.pos_prob:
+            # Get positive example
+            img2 = self._get_random_positive(box1["seq"], box1["frame_id"], box1["obj_id"])
+            label = 1
+        else:
+            # Get negative example
+            img2 = self._get_random_negative(box1["seq"], box1["frame_id"], box1["obj_id"])
+            label = 0
 
-      return img1, img2, torch.tensor(label, dtype=torch.float32)
+        # Apply transforms and return
+        img1 = self.transform(img1)
+        img2 = self.transform(img2)
 
+        return img1, img2, torch.tensor(label, dtype=torch.float32)
 
-# class SiameseDatasetTest(Dataset):
-#     def __init__(self, data_dir, seq, preds, crop_size=256):
-#       self.data_dir = data_dir
-#       self.seq = seq
-#       self.preds = preds
-#       self.crop_size = crop_size
-
-#       self.transform = transforms.Compose([
-#           transforms.ToPILImage(),
-#           transforms.Resize(256), # Resize to 256x256 first
-#           transforms.CenterCrop(crop_size),
-#           transforms.ToTensor(),
-#           transforms.Normalize(
-#               mean=[0.485, 0.456, 0.406], # ImageNet stats
-#               std=[0.229, 0.224, 0.225]
-#           )
-#       ])
-
-#       self.images = self._load_images(self.seq, self.preds)
-
-#     def _load_images(self, seq, preds):
-#         obj_list = []
-#         for frame_id in tqdm(preds["frame_id"].unique()):
-#             filename = ("000000" + str(frame_id))[-6:]
-#             img_path = f"{self.data_dir}/{seq}/img1/{filename}.jpg"
-#             image = cv2.imread(img_path)
-#             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-#             for idx, box in preds[preds["frame_id"] == frame_id].iterrows():
-#                 # box = preds[(preds["frame_id"] == frame_id) & (preds["obj_id"] == obj_id)].iloc[0]
-#                 x1, y1, x2, y2 = box[["x1", "y1", "x2", "y2"]]
-#                 obj_image = image[y1:(y2+1), x1:(x2+1)]
-#                 obj_list.append(obj_image)
-
-#         return obj_list
-
-#     def __len__(self):
-#       return len(self.preds)
-
-#     def __getitem__(self, idx):
-#       print("Getting Item")
-#       img = self.images.iloc[idx]
-#       img = self.transform(img)
-
-#       return img
-
-
-
-# def create_reid_dataset():
-#     siamese_dataset = SiameseDatasetTrain(data_dir=data_dir_train, crop_size=256, pos_prob=0.5, max_frame_gap=10)
-#     siamese_dataloader = DataLoader(siamese_dataset, batch_size=64, shuffle=True, num_workers=min(4, os.cpu_count()), pin_memory=True)
-
-#     return siamese_dataloader
-
-
-# def train_one_epoch(model, optimizer, dataloader, device, criterion, epoch):
-#     model.train()
-#     running_loss = 0.0
-#     for img1, img2, label in tqdm(dataloader):
-#         img1, img2, label = img1.to(device, non_blocking=True), img2.to(device, non_blocking=True), label.to(device, non_blocking=True)
-
-#         optimizer.zero_grad()
-
-#         # Forward pass
-#         output1, output2 = model(img1, img2)
-
-#         # Compute loss
-#         loss = criterion(output1, output2, label)
-
-#         # Backward pass and optimize
-#         loss.backward()
-#         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-#         optimizer.step()
-
-#         running_loss += loss.item()
-
-#     training_loss = running_loss / len(dataloader)
-
-#     return training_loss
-
-
-
-# def train_reid_model():
-#     # Initialize the Siamese Network and loss function
-#     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-
-#     model = SiameseNetwork().to(device)
-
-#     dataloader = create_reid_dataset()
-
-#     criterion = ContrastiveLoss()
-#     optimizer = optim.Adam([
-#         {'params': model.backbone.parameters(), 'lr': 1e-4},
-#         {'params': model.fc.parameters(), 'lr': 5e-4}
-#     ])
-
-#     # Training loop
-#     for epoch in range(num_epochs_reid):
-#         training_loss = train_one_epoch(
-#             model=model,
-#             optimizer=optimizer,
-#             dataloader=dataloader,
-#             device=device,
-#             criterion=criterion,
-#             epoch=epoch
-#         )
-#         print(f"Epoch [{epoch+1}/{num_epochs_reid}], Loss: {training_loss}")
-
-#     print("\nTraining Completed")
-
-#     torch.save({
-#     'epoch': epoch+1,
-#     'model_state_dict': model.state_dict(),
-#     'optimizer_state_dict': optimizer.state_dict(),
-#     'train_loss': training_loss
-#     }, save_filename_reid)
-
-#     print(f"Model Saved to: {save_filename_reid}")
-
-##########################
 
 def random_split(dataset, val_size=0.2):
+    """
+    Randomly split a dataset into training and validation sets.
+
+    NOTE:
+    We mistakenly used an 80/20 split on the bounding boxes, which resulted
+    in the same objects appearing in both the training and validation sets (data leakage).
+
+    The correct approach is to split the object IDs into training and validation sets,
+    then obtain the bounding boxes for each object ID.
+    """
     indices = list(range(len(dataset)))
     random.shuffle(indices)
 
@@ -336,6 +273,9 @@ def random_split(dataset, val_size=0.2):
 
 
 def create_reid_dataset(val_size=0.2, train_batch_size=64, val_batch_size=64):
+    """
+    Create the training and validation datasets for the Siamese Network.
+    """
     siamese_dataset = SiameseDatasetTrain(data_dir=data_dir_train, crop_size=256, pos_prob=0.5, max_frame_gap=10)
     
     train_dataset, val_dataset = random_split(siamese_dataset, val_size=val_size)
@@ -349,6 +289,9 @@ def create_reid_dataset(val_size=0.2, train_batch_size=64, val_batch_size=64):
 
 
 def train_one_epoch(model, optimizer, dataloader, device, criterion, epoch):
+    """
+    Train the model for one epoch.
+    """
     model.train()
     running_loss = 0.0
     for img1, img2, label in tqdm(dataloader):
@@ -374,7 +317,10 @@ def train_one_epoch(model, optimizer, dataloader, device, criterion, epoch):
     return training_loss
 
 def evaluate(model, val_loader, criterion, device):
-    model.eval()  # Set model to evaluation mode
+    """
+    Evaluate the model on the validation set.
+    """
+    model.eval()
     total_loss = 0.0
     total_samples = 0
     tp = 0
@@ -414,20 +360,18 @@ def evaluate(model, val_loader, criterion, device):
     return avg_loss, accuracy, precision, recall
 
 def train_reid_model():
-    # Initialize the Siamese Network and loss function
+    """
+    Train the Siamese Network for object re-identification.
+    """
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-
     model = SiameseNetwork().to(device)
-
     train_dataloader, val_dataloader = create_reid_dataset(val_batch_size=1)
-
     criterion = ContrastiveLoss()
     optimizer = optim.Adam([
         {'params': model.backbone.parameters(), 'lr': 1e-4},
         {'params': model.fc.parameters(), 'lr': 5e-4}
     ])
 
-    # Training loop
     for epoch in range(num_epochs_reid):
         training_loss = train_one_epoch(
             model=model,

@@ -1,9 +1,8 @@
+# External imports
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
-import torch
-import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from torchvision.utils import make_grid
@@ -11,12 +10,16 @@ from tqdm.auto import tqdm
 import cv2
 from google.colab.patches import cv2_imshow
 
+# Local imports
 from config import *
 from detector import *
 from reid import *
 
 
 def demo_augmentation():
+    """
+    Visualize examples of the augmentation process for the MOT16 dataset.
+    """
     t_raw = transforms.Compose([
         transforms.ToTensor(),
         transforms.Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0]==1 else x),
@@ -122,6 +125,9 @@ def demo_augmentation():
 
 
 def demo_reid_pairs(type):
+    """
+    Visualize examples of positive and negative pairs for the Siamese network.
+    """
     if type == "pos":
         pos_prob = 1.0
     else:
@@ -149,8 +155,10 @@ def demo_reid_pairs(type):
     cv2_imshow(frame2)
 
 
-
 def reverse_normalize(img, mean, std):
+    """
+    Reverse the normalization of an image for display.
+    """
     img *= std
     img += mean
     img *= 255
@@ -158,160 +166,11 @@ def reverse_normalize(img, mean, std):
     return img
 
 
-def track_objects(dataset, detection_model, siamese_net, output_path, fps=30):
-    """
-    Track objects on MOT16 dataset and save the output as a video.
-
-    Args:
-        dataset: MOTDataset that provides images and ground truth.
-        detection_model: The Faster R-CNN model for object detection.
-        siamese_net: The Siamese network for object re-identification.
-        output_path: Path to save the output video.
-        fps: Frames per second for the output video.
-    """
-    # Initialize video writer
-    first_image, _ = dataset[0]  # Get the first image to determine size
-    height, width = first_image.shape[1], first_image.shape[2]
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-
-    # Initialize tracking variables
-    tracked_objects = {}  # Dictionary to store tracked objects and their embeddings
-    next_id = 1  # Next ID to assign to a new object
-
-    # Process each image in the dataset
-    for idx in tqdm(range(len(dataset))):
-        image, _ = dataset[idx]  # Get the image (ignore ground truth for tracking)
-        image_np = image.permute(1, 2, 0).cpu().numpy()  # Convert tensor to numpy array
-        image_np = (image_np * 255).astype(np.uint8)  # Scale to [0, 255]
-        frame = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)  # Convert to BGR for OpenCV
-
-        # Perform detection
-        image_tensor = image.unsqueeze(0).to(device)
-        with torch.no_grad():
-            detections = detection_model(image_tensor)[0]
-
-        # Extract features for each detected object
-        scores = detections['scores']
-        boxes = detections['boxes'][scores > 0.7]  # Apply confidence threshold
-        for box in boxes:
-            x1, y1, x2, y2 = box.int().tolist()
-            crop = image_np[y1:y2, x1:x2]
-            if crop.size == 0:  # Skip empty crops
-                continue
-
-            # Resize and preprocess the crop for the Siamese Network
-            crop = cv2.resize(crop, (224, 224))
-            crop = transforms.ToTensor()(crop).unsqueeze(0).to(device)
-
-            # Compute the feature vector using the Siamese Network
-            with torch.no_grad():
-                embedding = siamese_net.forward_one(crop)
-
-            # Compare with previous embeddings (tracking logic)
-            matched_id = None
-            min_distance = 1.0
-            for obj_id, prev_emb in tracked_objects.items():
-                distance = torch.norm(embedding - prev_emb, p=2).item()
-                if distance < min_distance:
-                  min_distance = distance
-                  matched_id = obj_id
-
-            if matched_id is not None:
-                # Update the tracked object's embedding
-                tracked_objects[matched_id] = embedding
-            else:
-                # Assign a new ID
-                tracked_objects[next_id] = embedding
-                matched_id = next_id
-                next_id += 1
-
-            # Draw bounding box and ID
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv2.putText(frame, f"ID: {matched_id}", (x1, y1 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
-        # Write frame to output video
-        out.write(frame)
-
-    # Release resources
-    out.release()
-    cv2.destroyAllWindows()
-
-
-# output_path = 'output__tracking_video.mp4'
-# data_dir_train = f"{base_dir}/MOT16/train"
-# transform = transforms.Compose([transforms.ToTensor()])
-# train_dataset = MOTDataset(data_dir=data_dir_train, transform=transform)
-# track_objects(dataset=train_dataset,
-#               detection_model=model,
-#               siamese_net=siamese_net,
-#               output_path=output_path)
-
-################################################
-
-# Function to draw bounding boxes and save video
-def create_video_with_bboxes(dataloader, output_file):
-    # Get the first batch to determine image size
-    for images, targets in dataloader:
-        # The images tensor has shape [batch_size, channels, height, width]
-        # We need to move the channels to the last dimension for OpenCV
-        image_np = images[0].permute(1, 2, 0).numpy()  # Access the first image in the batch and permute
-        height, width, _ = image_np.shape
-        break
-
-    # Initialize VideoWriter
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_file, fourcc, 30, (width, height))
-
-    # Iterate through the dataloader
-    for images, targets in tqdm(dataloader):
-        image_np = images[0].permute(1, 2, 0).cpu().numpy()
-        image_np = (image_np * 255).astype(np.uint8)
-        frame = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
-
-        # Draw bounding boxes
-        for box in targets:  # List of boxes for the image
-            obj_id, x_min, y_min, x_max, y_max = box
-            x_min, y_min = int(x_min), int(y_min)
-            x_max, y_max = int(x_max), int(y_max)
-            cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
-            cv2.putText(frame, f"ID: {obj_id.item()}", (x_min, y_min - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
-        # Write frame to video
-        out.write(frame)
-
-        # Display the frame
-        # Display the frame using cv2_imshow
-        #cv2_imshow(frame)  # Replace cv2.imshow with cv2_imshow
-        #cv2.imshow('Video with Bounding Boxes', frame)
-        #if cv2.waitKey(1) & 0xFF == ord('q'):
-        #    break
-
-    out.release()
-    cv2.destroyAllWindows()
-
-
-# if __name__ == '__main__':
-#     # Example usage
-#     base_dir = '/content/drive/MyDrive/data/CS-5567'
-#     data_dir_train = f"{base_dir}/MOT16/train"
-#     transform = transforms.Compose([
-#         transforms.ToTensor()
-#     ])
-
-#     train_dataset = MOTDataset(data_dir=f"{base_dir}/MOT16/train", transform=transform)
-#     train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=False)
-
-#     output_file = 'mot_output_video.mp4'
-#     create_video_with_bboxes(train_dataloader, output_file)
-
-################################################
-
-# Function for displaying one frame with its boxes (manually)
-
 def display_frame(data_dir, seq, frame_id, boxes=None, label_loc="middle"):
+    """
+    Display a single frame with bounding boxes.
+    If boxes is not provided, it will attempt to load the ground truth boxes from the dataset.
+    """
     filename = ("000000" + str(frame_id))[-6:]
     img_path = f"{data_dir}/{seq}/img1/{filename}.jpg"
     image = cv2.imread(img_path)
@@ -334,7 +193,7 @@ def display_frame(data_dir, seq, frame_id, boxes=None, label_loc="middle"):
             return
 
     # Draw bounding boxes
-    for index, box in boxes.iterrows():  # List of predicted boxes
+    for index, box in boxes.iterrows():
         cv2.rectangle(
             img=image,
             pt1=(box["x1"], box["y1"]),
@@ -359,135 +218,30 @@ def display_frame(data_dir, seq, frame_id, boxes=None, label_loc="middle"):
     cv2.destroyAllWindows()
 
 
-# for i in range(1, 11):
-#     display_frame(data_dir=data_dir_test, seq="MOT16-01", frame_id=i, boxes=preds, label_loc="bottom")
-
-################################################
-
-def test_one_image(faster_rcnn_model, siamese_net):
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-
-    transform = transforms.Compose(
-        [transforms.ToTensor()]
-    )
-    test_dataset = MOTDataset(data_dir=data_dir_test, transform=transform, mode="test")
-    test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn=custom_collate_fn)
-
-    ckpt_file_name = f"{base_dir}/model_20250401.pth"
-    model_dict = torch.load(ckpt_file_name, weights_only=False)
-    model.load_state_dict(model_dict["model_state_dict"])
-    model.to(device)
-    model.eval()
-
-    siamese_ckpt_file_name = f"{base_dir}/siamese_model_20250401.pth"
-    siamese_model_dict = torch.load(siamese_ckpt_file_name, weights_only=False)
-    siamese_net.load_state_dict(siamese_model_dict["model_state_dict"])
-    siamese_net.to(device)
-    siamese_net.eval()
-
-    tracked_objects = {}
-    next_id = 1
-    for batch_list in test_dataloader:
-        for images, targets in batch_list:
-            images = list(image.to(device) for image in images)
-
-            with torch.no_grad():
-                preds = model(images)
-
-            image_np = images[0].permute(1, 2, 0).cpu().numpy()
-            image_np = (image_np * 255).astype(np.uint8)
-            frame = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
-
-            # Draw bounding boxes
-            threshold = 0.7
-            scores = preds[0]["scores"]
-            box_idx = torch.nonzero(scores > threshold).squeeze()
-            for box in preds[0]["boxes"][box_idx]:  # List of predicted boxes
-                x_min, y_min, x_max, y_max = box
-                x_min, y_min = int(x_min), int(y_min)
-                x_max, y_max = int(x_max), int(y_max)
-                #cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
-                # cv2.putText(frame, f"ID: {obj_id.item()}", (x_min, y_min - 10),
-                #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                crop = image_np[y_min:y_max, x_min:x_max]
-                if crop.size == 0:  # Skip empty crops
-                    continue
-
-                # Resize and preprocess the crop for the Siamese Network
-                crop = cv2.resize(crop, (224, 224))
-                crop = transforms.ToTensor()(crop).unsqueeze(0).to(device)
-
-                # Compute the feature vector using the Siamese Network
-                with torch.no_grad():
-                    embedding = siamese_net.forward_one(crop)
-
-                # Compare with previous embeddings (tracking logic)
-                matched_id = None
-                min_distance = float('inf')
-                max_similarity = -1  # Initialize to a very low similarity value
-
-                for obj_id, prev_embedding in tracked_objects.items():
-                    cosine_sim = F.cosine_similarity(embedding, prev_embedding).item()
-                    if cosine_sim > max_similarity and cosine_sim > 0.8:  # Cosine similarity threshold
-                        max_similarity = cosine_sim
-                        matched_id = obj_id
-
-                if matched_id is not None:
-                    # Update the tracked object's embedding
-                    tracked_objects[matched_id] = embedding
-                else:
-                    # Assign a new ID
-                    tracked_objects[next_id] = embedding
-                    matched_id = next_id
-                    next_id += 1
-
-                # Draw bounding box and ID
-                cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
-                cv2.putText(frame, f"ID: {matched_id}", (x_min, y_min - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
-            # Display the frame
-            cv2_imshow(frame)
-
-            #cv2.destroyAllWindows()
-            #cv2_imshow(frame)
-            #cv2.waitKey(0)
-            #cv2.destroyAllWindows()
-
-            #return preds
-
-            return preds
-
-
-# preds = test_one_image(faster_rcnn_model=model, siamese_net=siamese_net)
-
-################################################
-
 def generate_video(data_loader, boxes, output_file, dim, label_loc="middle"):
-    # device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-
-    # Initialize VideoWriter
+    """
+    Generate a video from the specified data_loader and save it to the specified location.
+    The video will include bounding boxes and IDs for the detected objects.
+    """
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_file, fourcc, 30, dim)
     frame = 0
 
-    # Stats for reversing normalization
+    # ImageNet stats for reversing normalization
     mean = np.array([0.485, 0.456, 0.406])
     std = np.array([0.229, 0.224, 0.225])
 
     for batch_list in tqdm(data_loader):
         for image, _ in batch_list:
             frame += 1
-            # image = image.to(device)
             image_np = image.squeeze().permute(1, 2, 0).cpu().numpy()
             image_np = reverse_normalize(image_np, mean=mean, std=std)
-            height, width, _ = image_np.shape
             img = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
 
             boxes_f = boxes[boxes["frame_id"] == frame]
 
             # Draw bounding boxes
-            for index, box in boxes_f.iterrows():  # List of predicted boxes
+            for index, box in boxes_f.iterrows():
                 if label_loc == "middle":
                   label_x = int((box["x1"] + box["x2"])/2)
                   label_y = int((box["y1"] + box["y2"])/2)

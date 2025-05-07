@@ -1,29 +1,26 @@
-# Import necessary packages
+# External imports
 import numpy as np
 import os
 import random
-from datetime import date
 import torch
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as transforms
 from torchvision.models.detection import (
     fasterrcnn_resnet50_fpn,
-    fasterrcnn_resnet50_fpn_v2,
-    fasterrcnn_mobilenet_v3_large_fpn,
-    fasterrcnn_mobilenet_v3_large_320_fpn,
-    FasterRCNN_ResNet50_FPN_Weights,
-    FasterRCNN_ResNet50_FPN_V2_Weights,
-    FasterRCNN_MobileNet_V3_Large_FPN_Weights,
-    FasterRCNN_MobileNet_V3_Large_320_FPN_Weights
+    FasterRCNN_ResNet50_FPN_Weights
 )
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from tqdm.auto import tqdm
 import cv2
 
+# Local imports
 from config import *
 
 
 def load_backbone():
+    """
+    Load the pre-trained ResNet50 backbone for object detection.
+    """
     model = fasterrcnn_resnet50_fpn(
         weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT,
         trainable_backbone_layers=1)
@@ -34,8 +31,10 @@ def load_backbone():
     return model
 
 
-# Load pre-trained detection model from Google Drive
 def load_trained_detection_model(filename):
+    """
+    Load a pre-trained detection model from a specified location.
+    """
     model = fasterrcnn_resnet50_fpn()
     num_classes = 2
     in_features = model.roi_heads.box_predictor.cls_score.in_features
@@ -49,19 +48,14 @@ def load_trained_detection_model(filename):
 
 
 class MOTDataset(Dataset):
+    """
+    Custom dataset for loading images and ground truth bounding boxes from the MOT16 dataset.
+    """
     def __init__(self, data_dir, transform=None, mode="train", seq_name=None):
         self.data_dir = data_dir
         self.transform = transform
         self.mode = mode
         self.seq_name = seq_name
-
-        # # Saving, just in case
-        # val_transform = transforms.Compose([
-        #     transforms.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5),
-        #     transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5)),
-        #     transforms.ToTensor(),
-        #     transforms.Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0]==1 else x)
-        # ])
 
         # For sake of time, treating train/val equally, then no transform for test
         if mode == "train":
@@ -95,6 +89,9 @@ class MOTDataset(Dataset):
         self.imgs = self._load_images()
 
     def _load_images(self):
+        """
+        Return a sorted list of image paths from the data_dir directory.
+        """
         imgs = []
 
         if self.mode == "train":
@@ -111,6 +108,19 @@ class MOTDataset(Dataset):
         return sorted(imgs)
 
     def _load_ground_truth(self):
+        """
+        Load the ground truth bounding boxes from the MOT16 dataset in the following format:
+        {
+            seq_name: {
+                frame_id: [
+                    [obj_id, x1, y1, x2, y2],
+                    ...
+                ],
+                ...
+            },
+            ...
+        }
+        """
         gt = {}
 
         # Filter to specified seq if using inference mode
@@ -136,9 +146,15 @@ class MOTDataset(Dataset):
         return gt
 
     def __len__(self):
+        """
+        Return the number of images in the dataset.
+        """
         return len(self.imgs)
 
     def __getitem__(self, idx):
+        """
+        Load an image and its corresponding ground truth bounding boxes.
+        """
         img_path = f"{self.data_dir}/{self.imgs[idx]}"
         image = cv2.imread(img_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -166,9 +182,16 @@ class MOTDataset(Dataset):
 
 
 def custom_collate_fn(batch):
+    """
+    Custom collate function to handle variable-sized images and ground truth data.
+    
+    Batches are returned in the format [(images1, gt1), (images2, gt2), ...],
+    where each tuple contains multiple images of the same resolution.
+    """
     images = [item[0] for item in batch]
     gt = [item[1] for item in batch]
     # Object ID is item[0], but 1 in labels represents the class "person"
+    # So all labels here are set to 1 (object)
     gt_dicts = [
         {"boxes": torch.Tensor([item[1:] for item in img]).type(torch.float32),
          "labels": torch.Tensor([1 for item in img]).type(torch.int64)}
@@ -195,6 +218,9 @@ def custom_collate_fn(batch):
 
 
 def random_split(dataset, val_size=0.2):
+    """
+    Randomly split the MOT16 dataset into training and validation sets.
+    """
     indices = list(range(len(dataset)))
     random.shuffle(indices)
 
@@ -209,7 +235,9 @@ def random_split(dataset, val_size=0.2):
 
 
 def motion_blur(image, p=0.2, kernel_size_range=(3, 9)):
-    """Add motion blur to simulate fast movement"""
+    """
+    Add motion blur to simulate fast movement.
+    """
     if random.random() > p:
         return image
 
@@ -247,6 +275,9 @@ def motion_blur(image, p=0.2, kernel_size_range=(3, 9)):
 
 
 def create_detection_datasets(mode, seq_name=None):
+    """
+    Create the detection datasets and dataloaders for training/validation or test.
+    """
     if mode == "train":
         detection_dataset_train = MOTDataset(data_dir=data_dir_train, mode="train")
         detection_dataset_train, detection_dataset_val = random_split(detection_dataset_train, val_size=0.2)
@@ -285,6 +316,9 @@ def create_detection_datasets(mode, seq_name=None):
 
 
 def train_one_epoch(model, optimizer, data_loader, device, warmup):
+    """
+    Train the model for one epoch.
+    """
     model.train()
 
     lr_warmup = None
@@ -296,10 +330,8 @@ def train_one_epoch(model, optimizer, data_loader, device, warmup):
             optimizer, start_factor=warmup_factor, total_iters=warmup_iters
         )
 
-    # batch_num = 0
     for batch_list in tqdm(data_loader):
         for images, targets in batch_list:
-            # print(f"Batch {batch_num}")
             images = list(image.to(device, non_blocking=True) for image in images)
             targets = [{k: v.to(device, non_blocking=True) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
             losses = model(images, targets)
@@ -314,7 +346,6 @@ def train_one_epoch(model, optimizer, data_loader, device, warmup):
                 lr_warmup.step()
 
             lr = optimizer.param_groups[0]["lr"]
-            # batch_num += 1
 
     losses["total"] = tot_loss
 
@@ -322,6 +353,9 @@ def train_one_epoch(model, optimizer, data_loader, device, warmup):
 
 
 def evaluate(model, val_dataloader, device):
+    """
+    Evaluate the model on the validation set.
+    """
     loss_list = []
 
     for batch_list in tqdm(val_dataloader):
@@ -341,6 +375,9 @@ def evaluate(model, val_dataloader, device):
 
 
 def print_results(epoch, lr, train_losses, val_loss):
+    """
+    Print the training and validation results.
+    """
     print(f"Epoch {epoch} | Learning Rate: {lr}")
     print(f"-- Train Loss: {train_losses['total']}")
     print(f"---- Classifier: {train_losses['loss_classifier']}")
@@ -351,6 +388,9 @@ def print_results(epoch, lr, train_losses, val_loss):
 
 
 def train_detection_model():
+    """
+    Train and evaluate the object detection model over several epochs using the MOT16 dataset.
+    """
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     model = load_backbone()
