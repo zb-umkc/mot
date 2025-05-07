@@ -247,76 +247,76 @@ class SiameseDatasetTrain(Dataset):
 
 
 
-def create_reid_dataset():
-    siamese_dataset = SiameseDatasetTrain(data_dir=data_dir_train, crop_size=256, pos_prob=0.5, max_frame_gap=10)
-    siamese_dataloader = DataLoader(siamese_dataset, batch_size=64, shuffle=True, num_workers=min(4, os.cpu_count()), pin_memory=True)
+# def create_reid_dataset():
+#     siamese_dataset = SiameseDatasetTrain(data_dir=data_dir_train, crop_size=256, pos_prob=0.5, max_frame_gap=10)
+#     siamese_dataloader = DataLoader(siamese_dataset, batch_size=64, shuffle=True, num_workers=min(4, os.cpu_count()), pin_memory=True)
 
-    return siamese_dataloader
-
-
-def train_one_epoch(model, optimizer, dataloader, device, criterion, epoch):
-    model.train()
-    running_loss = 0.0
-    for img1, img2, label in tqdm(dataloader):
-        img1, img2, label = img1.to(device, non_blocking=True), img2.to(device, non_blocking=True), label.to(device, non_blocking=True)
-
-        optimizer.zero_grad()
-
-        # Forward pass
-        output1, output2 = model(img1, img2)
-
-        # Compute loss
-        loss = criterion(output1, output2, label)
-
-        # Backward pass and optimize
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        optimizer.step()
-
-        running_loss += loss.item()
-
-    training_loss = running_loss / len(dataloader)
-
-    return training_loss
+#     return siamese_dataloader
 
 
+# def train_one_epoch(model, optimizer, dataloader, device, criterion, epoch):
+#     model.train()
+#     running_loss = 0.0
+#     for img1, img2, label in tqdm(dataloader):
+#         img1, img2, label = img1.to(device, non_blocking=True), img2.to(device, non_blocking=True), label.to(device, non_blocking=True)
 
-def train_reid_model():
-    # Initialize the Siamese Network and loss function
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+#         optimizer.zero_grad()
 
-    model = SiameseNetwork().to(device)
+#         # Forward pass
+#         output1, output2 = model(img1, img2)
 
-    dataloader = create_reid_dataset()
+#         # Compute loss
+#         loss = criterion(output1, output2, label)
 
-    criterion = ContrastiveLoss()
-    optimizer = optim.Adam([
-        {'params': model.backbone.parameters(), 'lr': 1e-4},
-        {'params': model.fc.parameters(), 'lr': 5e-4}
-    ])
+#         # Backward pass and optimize
+#         loss.backward()
+#         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+#         optimizer.step()
 
-    # Training loop
-    for epoch in range(num_epochs_reid):
-        training_loss = train_one_epoch(
-            model=model,
-            optimizer=optimizer,
-            dataloader=dataloader,
-            device=device,
-            criterion=criterion,
-            epoch=epoch
-        )
-        print(f"Epoch [{epoch+1}/{num_epochs_reid}], Loss: {training_loss}")
+#         running_loss += loss.item()
 
-    print("\nTraining Completed")
+#     training_loss = running_loss / len(dataloader)
 
-    torch.save({
-    'epoch': epoch+1,
-    'model_state_dict': model.state_dict(),
-    'optimizer_state_dict': optimizer.state_dict(),
-    'train_loss': training_loss
-    }, save_filename_reid)
+#     return training_loss
 
-    print(f"Model Saved to: {save_filename_reid}")
+
+
+# def train_reid_model():
+#     # Initialize the Siamese Network and loss function
+#     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
+#     model = SiameseNetwork().to(device)
+
+#     dataloader = create_reid_dataset()
+
+#     criterion = ContrastiveLoss()
+#     optimizer = optim.Adam([
+#         {'params': model.backbone.parameters(), 'lr': 1e-4},
+#         {'params': model.fc.parameters(), 'lr': 5e-4}
+#     ])
+
+#     # Training loop
+#     for epoch in range(num_epochs_reid):
+#         training_loss = train_one_epoch(
+#             model=model,
+#             optimizer=optimizer,
+#             dataloader=dataloader,
+#             device=device,
+#             criterion=criterion,
+#             epoch=epoch
+#         )
+#         print(f"Epoch [{epoch+1}/{num_epochs_reid}], Loss: {training_loss}")
+
+#     print("\nTraining Completed")
+
+#     torch.save({
+#     'epoch': epoch+1,
+#     'model_state_dict': model.state_dict(),
+#     'optimizer_state_dict': optimizer.state_dict(),
+#     'train_loss': training_loss
+#     }, save_filename_reid)
+
+#     print(f"Model Saved to: {save_filename_reid}")
 
 ##########################
 
