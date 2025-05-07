@@ -1,3 +1,4 @@
+import sys
 import pandas as pd
 import os
 import random
@@ -334,14 +335,14 @@ def random_split(dataset, val_size=0.2):
     return train_dataset, val_dataset
 
 
-def create_reid_dataset(val_size=0.2):
+def create_reid_dataset(val_size=0.2, train_batch_size=64, val_batch_size=64):
     siamese_dataset = SiameseDatasetTrain(data_dir=data_dir_train, crop_size=256, pos_prob=0.5, max_frame_gap=10)
     
     train_dataset, val_dataset = random_split(siamese_dataset, val_size=val_size)
     
-    train_siamese_dataloader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=min(4, os.cpu_count()), pin_memory=True
+    train_siamese_dataloader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, num_workers=min(4, os.cpu_count()), pin_memory=True
     )
-    val_siamese_dataloader = DataLoader(val_dataset, batch_size=64, shuffle=False, num_workers=min(4, os.cpu_count()), pin_memory=True
+    val_siamese_dataloader = DataLoader(val_dataset, batch_size=val_batch_size, shuffle=False, num_workers=min(4, os.cpu_count()), pin_memory=True
     )
 
     return train_siamese_dataloader, val_siamese_dataloader
@@ -400,10 +401,10 @@ def evaluate(model, val_loader, criterion, device):
             # Calculate other metrics
             distance = torch.norm(output1 - output2, p=2).item()
             pred = distance < reid_threshold
-            tp += torch.sum((pred == 1) & (label == 1)).item()
-            fp += torch.sum((pred == 1) & (label == 0)).item()
-            tn += torch.sum((pred == 0) & (label == 0)).item()
-            fn += torch.sum((pred == 0) & (label == 1)).item()
+            tp += int((pred == 1) & (label == 1))
+            fp += int((pred == 1) & (label == 0))
+            tn += int((pred == 0) & (label == 0))
+            fn += int((pred == 0) & (label == 1))
               
     avg_loss = total_loss / total_samples
     accuracy = (tp + tn) / (tp + tn + fp + fn)
@@ -419,7 +420,7 @@ def train_reid_model():
 
     model = SiameseNetwork().to(device)
 
-    train_dataloader, val_dataloader = create_reid_dataset()
+    train_dataloader, val_dataloader = create_reid_dataset(val_batch_size=1)
 
     criterion = ContrastiveLoss()
     optimizer = optim.Adam([
@@ -432,13 +433,18 @@ def train_reid_model():
         training_loss = train_one_epoch(
             model=model,
             optimizer=optimizer,
-            dataloader=dataloader,
+            dataloader=train_dataloader,
             device=device,
             criterion=criterion,
             epoch=epoch
         )
-        val_loss = evaluate(model, val_dataloader, criterion, device)
-        print(f"Epoch [{epoch+1}/{num_epochs_reid}], Training Loss: {training_loss}, Val Loss: {val_loss}")
+        l, a, p, r = evaluate(model, val_dataloader, criterion, device)
+        print(f"Epoch [{epoch+1}/{num_epochs_reid}]")
+        print(f"-- Training Loss: {training_loss}")
+        print(f"-- Val Loss: {l}")
+        print(f"-- Val Accuacy: {a}")
+        print(f"-- Val Precision: {p}")
+        print(f"-- Val Recall: {r}")
 
     print("\nTraining Completed")
 
@@ -447,7 +453,10 @@ def train_reid_model():
     'model_state_dict': model.state_dict(),
     'optimizer_state_dict': optimizer.state_dict(),
     'train_loss': training_loss,
-    'val_loss': val_loss
+    'val_loss': l,
+    'val_acc': a,
+    'val_prec': p,
+    'val_rec': r
     }, save_filename_reid)
 
     print(f"Model Saved to: {save_filename_reid}")
