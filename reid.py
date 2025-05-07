@@ -334,10 +334,10 @@ def random_split(dataset, val_size=0.2):
     return train_dataset, val_dataset
 
 
-def create_reid_dataset():
+def create_reid_dataset(val_size=0.2):
     siamese_dataset = SiameseDatasetTrain(data_dir=data_dir_train, crop_size=256, pos_prob=0.5, max_frame_gap=10)
     
-    train_dataset, val_dataset = random_split(siamese_dataset, val_size=0.2)
+    train_dataset, val_dataset = random_split(siamese_dataset, val_size=val_size)
     
     train_siamese_dataloader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=min(4, os.cpu_count()), pin_memory=True
     )
